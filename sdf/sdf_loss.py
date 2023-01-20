@@ -39,7 +39,7 @@ class SDFLoss(nn.Module):
     def filter_isolated_boxes(self, boxes):
 
         num_people = boxes.shape[0]
-        isolated = torch.zeros(num_people, device=boxes.device, dtype=torch.uint8)
+        isolated = torch.zeros(num_people, device=boxes.device, dtype=torch.bool)
         for i in range(num_people):
             isolated_i = False
             for j in range(num_people):
@@ -64,7 +64,8 @@ class SDFLoss(nn.Module):
 
         # Filter out the isolated boxes
         vertices = vertices[overlapping_boxes, :].contiguous()
-        translation = translation[overlapping_boxes, :].contiguous()
+        # translation = translation[overlapping_boxes, :].contiguous()
+
         boxes = boxes[overlapping_boxes]
         boxes_center = boxes.mean(dim=1).unsqueeze(dim=1)
         boxes_scale = (1+scale_factor) * 0.5*(boxes[:,1] - boxes[:,0]).max(dim=-1)[0][:,None,None]
@@ -84,8 +85,14 @@ class SDFLoss(nn.Module):
             # Change coordinate system to local coordinate system of each person
             vertices_local = (vertices - boxes_center[i].unsqueeze(dim=0)) / boxes_scale[i].unsqueeze(dim=0)
             vertices_grid = vertices_local.view(1,-1,1,1,3)
+
             # Sample from the phi grid
-            phi_val = nn.functional.grid_sample(phi[i][None, None], vertices_grid).view(valid_people, -1)
+            phi_val = nn.functional.grid_sample(
+                input=phi[i][None, None],
+                grid=vertices_grid,
+                align_corners=True
+            ).view(valid_people, -1)
+
             # ignore the phi values for the i-th shape
             cur_loss = weights * phi_val
             if self.debugging:
